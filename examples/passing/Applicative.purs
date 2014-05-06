@@ -1,6 +1,7 @@
 module Main where
 
-import Prelude ()
+import Prelude (id, Show, (++), ($))
+import Control.Monad.Eff
 
 class Applicative f where
   pure :: forall a. a -> f a
@@ -13,4 +14,11 @@ instance applicativeMaybe :: Applicative Maybe where
   (<*>) (Just f) (Just a) = Just (f a)
   (<*>) _ _ = Nothing
 
-main = Debug.Trace.trace "Done"
+
+showMaybe (Just s) = "Just " ++ s
+showMaybe Nothing = "Nothing"
+
+main = do
+  Debug.Trace.trace (showMaybe (pure id <*> pure "done"))
+  Debug.Trace.trace (showMaybe (pure id <*> Nothing))
+  Debug.Trace.trace (showMaybe (Nothing <*> pure "done"))

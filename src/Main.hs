@@ -4,6 +4,7 @@ module Main where
 import           Control.Applicative
 import           Control.Monad
 import           Data.Char
+import qualified Data.Set            as S
 import           System.Directory
 import           System.Exit
 import           System.FilePath
@@ -28,39 +29,47 @@ generateTestFolder = do
   where
     validLetters = ['a'..'z'] ++ ['0'..'9']
 
-strip :: String -> String
-strip = dropWhile isSpace . reverse . dropWhile isSpace . reverse
-
-runTestFile :: FilePath -> IO ()
-runTestFile absPath = do
+runPassingTest :: FilePath -> Maybe FilePath -> IO ()
+runPassingTest pgmPath outPath = do
     testFolder <- generateTestFolder
     ret <- tryIOError $ createDirectory testFolder
     case ret of
       Left err
-        | isAlreadyExistsError err -> runTestFile absPath
+        | isAlreadyExistsError err -> runPassingTest pgmPath outPath
         | otherwise -> ioError err
       _ -> do
         setCurrentDirectory testFolder
         (exit, stdout, stderr) <-
-          readProcessWithExitCode "psc" ["--lua", "--main", "Main", absPath] ""
+          readProcessWithExitCode "psc" ["--lua", "--main", "Main", pgmPath] ""
         assertBool ("exit code failure\nstderr:\n" ++ stderr) (exit == ExitSuccess)
         (exit', stdout', stderr') <-
           readProcessWithExitCode "lua" [testFolder </> "Main.lua"] ""
         assertBool ("exit code failure\nstderr:\n" ++ stderr') (exit' == ExitSuccess)
-        assertEqual "unexpected program output" "Done" (strip stdout')
+        case outPath of
+          Nothing -> return ()
+          Just outFile -> do
+            outContents <- readFile outFile
+            assertEqual "unexpected program output" outContents stdout'
 
-getPassingTests :: IO [FilePath]
+getPassingTests :: IO [(FilePath, Maybe FilePath)]
 getPassingTests = do
     curDir <- getCurrentDirectory
-    map ((curDir </> passingTestFolder) </>) . filter ((==) ".purs" . takeExtension)
-      <$> getDirectoryContents (curDir </> passingTestFolder)
+    dirContents <- S.fromList <$> getDirectoryContents passingTestFolder
+    let prefix = curDir </> passingTestFolder
+        pursFiles = S.filter ((==) ".purs" . takeExtension) dirContents
+        pursWOutput = flip map (S.toList pursFiles) $ \p ->
+          let outFile = dropExtension p <.> "out"
+          in (prefix </> p
+             ,if S.member outFile dirContents then Just (prefix </> outFile) else Nothing)
+    return pursWOutput
   where
     passingTestFolder = "examples/passing"
 
 getPassingTestSuite :: IO TestTree
 getPassingTestSuite = do
     passingTests <- getPassingTests
-    let assertions = map (\path -> testCase path $ runTestFile path) passingTests
+    let assertions = map (\(pgmPath, outPath) ->
+          testCase pgmPath $ runPassingTest pgmPath outPath) passingTests
     return $ testGroup "Passing tests" assertions
 
 main :: IO ()

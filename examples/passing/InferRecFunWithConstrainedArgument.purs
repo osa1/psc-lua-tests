@@ -12,4 +12,4 @@ foreign import error1
 
 main = case test 0 of
          100 -> Debug.Trace.trace "Done"
-         _ -> error1 "Failed
+         _ -> error1 "Failed"
