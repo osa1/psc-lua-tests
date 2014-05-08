@@ -1,6 +1,7 @@
 module Main where
 
 import Prelude
+import Control.Monad.Eff
 
 data Tuple a b = Tuple a b
 
@@ -38,11 +39,14 @@ modify f = do
 
 test :: Tuple String String
 test = runState "" $ do
-  modify $ (++) "World!"
-  modify $ (++) "Hello, "
+  modify $ (<>) "World!"
+  modify $ (<>) "Hello, "
   get
 
 main = do
-  let t1 = test
-  Debug.Trace.trace "Done"
+  let t = test
+  case t of
+    Tuple f s -> do
+      Debug.Trace.trace f
+      Debug.Trace.trace s
 

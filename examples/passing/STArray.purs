@@ -22,4 +22,5 @@ fromTo lo hi = runSTArray (do
 
 main = do
   let t1 = runPure (fromTo 10 20)
+  print t1
   trace "Done"

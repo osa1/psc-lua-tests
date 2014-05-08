@@ -1,5 +1,8 @@
 module Main where
 
+  import Control.Monad.Eff
+  import Debug.Trace
+
   update1 = \o -> o { foo = "Foo" }
 
   update2 :: forall r. { foo :: String | r } -> { foo :: String | r }
@@ -15,4 +18,8 @@ module Main where
 
   inferPolyUpdate = \o -> o { foo = "Foo" }
 
-  main = Debug.Trace.trace ((update1 {foo: ""}).foo)
+  main = do
+    trace ((update1 {foo: ""}).foo)
+    trace ((replace {foo: "", bar: ""}).foo)
+    trace ((replace {foo: "Foo", bar: ""}).foo)
+    trace ((replace {foo: "Bar", bar: ""}).bar)

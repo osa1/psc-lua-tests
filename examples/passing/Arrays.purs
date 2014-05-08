@@ -1,6 +1,7 @@
 module Main where
 
 import Prelude.Unsafe (unsafeIndex)
+import Control.Monad.Eff
 
 test1 arr = arr `unsafeIndex` 0 + arr `unsafeIndex` 1 + 1
 
@@ -21,4 +22,10 @@ test4 = \arr -> case arr of
   [_] -> 0
   x : y : xs -> x * y + test4 xs
 
-main = Debug.Trace.trace "Done"
+main = do
+  Debug.Trace.print $ test1 [1, 2, 3, 4]
+  Debug.Trace.print $ test2 [1, 2]
+  Debug.Trace.print $ test2 [1]
+  Debug.Trace.print $ test2 []
+  Debug.Trace.print $ test4 []
+  Debug.Trace.trace "Done"
