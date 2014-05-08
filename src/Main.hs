@@ -40,7 +40,7 @@ runPassingTest pgmPath outPath = do
       _ -> do
         setCurrentDirectory testFolder
         (exit, stdout, stderr) <-
-          readProcessWithExitCode "psc" ["--lua", "--main", "Main", pgmPath] ""
+          readProcessWithExitCode "psc-lua" ["--main", "Main", pgmPath] ""
         assertBool ("exit code failure\nstderr:\n" ++ stderr) (exit == ExitSuccess)
         (exit', stdout', stderr') <-
           readProcessWithExitCode "lua" [testFolder </> "Main.lua"] ""
