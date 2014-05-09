@@ -1,10 +1,11 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 
 module Main where
 
 import           Control.Applicative
 import           Control.Monad
 import           Data.Char
-import qualified Data.Set            as S
+import qualified Data.Set                  as S
 import           System.Directory
 import           System.Exit
 import           System.FilePath
@@ -12,10 +13,17 @@ import           System.IO.Error
 import           System.Process
 import           System.Random
 
+import           Data.Tagged
+import           Data.Typeable
+import           Options.Applicative
+import           Options.Applicative.Types hiding (Option)
+
 import           Test.HUnit.Base
 import           Test.HUnit.Text
 import           Test.Tasty
 import           Test.Tasty.HUnit
+import           Test.Tasty.Ingredients
+import           Test.Tasty.Options
 
 randomSelect :: [a] -> IO a
 randomSelect lst =
@@ -29,13 +37,35 @@ generateTestFolder = do
   where
     validLetters = ['a'..'z'] ++ ['0'..'9']
 
-runPassingTest :: FilePath -> Maybe FilePath -> IO ()
-runPassingTest pgmPath outPath = do
+newtype LuaExec = LuaExec { runLuaExec :: String } deriving (Typeable)
+
+instance IsOption LuaExec where
+    defaultValue = LuaExec "lua"
+    parseValue s = Just $ LuaExec s
+    optionName = Tagged "with-lua"
+    optionHelp = Tagged "Use Lua executable"
+    optionCLParser =
+      nullOption
+        (  reader parse
+        <> long name
+        <> short 'w'
+        <> help helpString
+        )
+      where
+        name = untag (optionName :: Tagged LuaExec String)
+        helpString = untag (optionHelp :: Tagged LuaExec String)
+        parse =
+          ReadM .
+          maybe (Left (ErrorMsg $ "Could not parse " ++ name)) Right .
+          parseValue
+
+runPassingTest :: LuaExec -> FilePath -> Maybe FilePath -> IO ()
+runPassingTest luaExec pgmPath outPath = do
     testFolder <- generateTestFolder
     ret <- tryIOError $ createDirectory testFolder
     case ret of
       Left err
-        | isAlreadyExistsError err -> runPassingTest pgmPath outPath
+        | isAlreadyExistsError err -> runPassingTest luaExec pgmPath outPath
         | otherwise -> ioError err
       _ -> do
         setCurrentDirectory testFolder
@@ -43,7 +73,7 @@ runPassingTest pgmPath outPath = do
           readProcessWithExitCode "psc-lua" ["--main", "Main", pgmPath] ""
         assertBool ("exit code failure\nstderr:\n" ++ stderr) (exit == ExitSuccess)
         (exit', stdout', stderr') <-
-          readProcessWithExitCode "lua" [testFolder </> "Main.lua"] ""
+          readProcessWithExitCode (runLuaExec luaExec) [testFolder </> "Main.lua"] ""
         assertBool ("exit code failure\nstderr:\n" ++ stderr') (exit' == ExitSuccess)
         case outPath of
           Nothing -> return ()
@@ -51,8 +81,8 @@ runPassingTest pgmPath outPath = do
             outContents <- readFile outFile
             assertEqual "unexpected program output" outContents stdout'
 
-getPassingTests :: IO [(FilePath, Maybe FilePath)]
-getPassingTests = do
+getPassingTestFiles :: IO [(FilePath, Maybe FilePath)]
+getPassingTestFiles = do
     curDir <- getCurrentDirectory
     dirContents <- S.fromList <$> getDirectoryContents passingTestFolder
     let prefix = curDir </> passingTestFolder
@@ -65,14 +95,21 @@ getPassingTests = do
   where
     passingTestFolder = "examples/passing"
 
-getPassingTestSuite :: IO TestTree
+getPassingTestSuite :: IO (LuaExec -> TestTree)
 getPassingTestSuite = do
-    passingTests <- getPassingTests
-    let assertions = map (\(pgmPath, outPath) ->
-          testCase pgmPath $ runPassingTest pgmPath outPath) passingTests
-    return $ testGroup "Passing tests" assertions
+    passingTestFiles <- getPassingTestFiles
+    return $ \lua ->
+      let assertions = map (\(pgmPath, outPath) ->
+            testCase pgmPath $ runPassingTest lua pgmPath outPath) passingTestFiles
+      in testGroup "Passing tests" assertions
+
+ingredients :: [Ingredient]
+ingredients = includingOptions [Option (Proxy :: Proxy LuaExec)] : defaultIngredients
 
 main :: IO ()
 main = do
     passingTests <- getPassingTestSuite
-    defaultMain $ adjustOption (const $ mkTimeout 5000000) $ testGroup "tests" [passingTests]
+
+    defaultMainWithIngredients ingredients $
+      adjustOption (const $ mkTimeout 5000000) $
+        testGroup "tests" [askOption passingTests]
